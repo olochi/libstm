@@ -23,6 +23,14 @@ void exit_with_help()
 	"	5 -- SVDD		(C should be between 1/num_instances and 1)\n"
 	"	6 -- R^2: L1SVM\n"
 	"	7 -- R^2: L2SVM\n"
+	/****************************************************************
+	* 作    者：ake
+	* 描述说明：8--STDD,文件名格式，Yale_64_64;
+	*****************************************************************/
+	"	8 -- STDD		(C should be between 1/num_instances and 1)\n"
+	/****************************************************************
+	* end
+	*****************************************************************/
 	"-t kernel_type : set type of kernel function (default 2)\n"
 	"	0 -- linear: u'*v\n"
 	"	1 -- polynomial: (gamma*u'*v + coef0)^degree\n"
