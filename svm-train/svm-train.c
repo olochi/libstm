@@ -25,7 +25,7 @@ void exit_with_help()
 	"	7 -- R^2: L2SVM\n"
 	/****************************************************************
 	* 作    者：ake
-	* 描述说明：8--STDD,文件名格式，Yale_64_64;
+	* 描述说明：8--STDD,文件名格式，Yale*64*64;
 	*****************************************************************/
 	"	8 -- STDD		(C should be between 1/num_instances and 1)\n"
 	/****************************************************************
@@ -397,6 +397,19 @@ void parse_command_line(int agrc1, char **agrv1, char *input_file_name, char *mo
 		exit_with_help();
 
 	strcpy(input_file_name, agrv1[i]);
+
+	/*** 作    者：ake****************************************************
+	***描述说明：读取维数
+	*****************************************************************/
+	if (param.svm_type == 8)
+	{
+		char *p = strtok(input_file_name, '*');
+		p = strtok(NULL, '*');
+		param.Dimension1 = strtod(NULL, '*');
+		param.Dimension2 = strtod(NULL, '*');
+		param.Dimension = param.Dimension1 * param.Dimension2;
+	}
+	/*******************end ******************************************/
 
 	if(i<agrc1-1)
 		strcpy(model_file_name,agrv1[i+1]);

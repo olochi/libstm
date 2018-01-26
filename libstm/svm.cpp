@@ -1684,6 +1684,7 @@ static void solve_nu_svr(
 	delete[] y;
 }
 
+
 static void solve_svdd(
 	const svm_problem *prob, const svm_parameter *param,
 	double *alpha, Solver::SolutionInfo* si)
@@ -1755,6 +1756,82 @@ static void solve_svdd(
 	delete[] QD;
 	delete[] ones;
 }
+
+/*** 作    者：ake****************************************************
+***描述说明：
+*****************************************************************/
+static void solve_stdd(
+	const svm_problem *prob, const svm_parameter *param,
+	double *alpha, Solver::SolutionInfo* si)
+{
+	int l = prob->l;
+	int i, j;
+	double r_square;
+	double C = param->C;
+	double *QD = new double[l];
+	double *linear_term = new double[l];
+	schar *ones = new schar[l];
+
+	ONE_CLASS_Q Q = ONE_CLASS_Q(*prob, *param);
+	for (i = 0; i<l; i++)
+	{
+		QD[i] = Q.get_QD()[i];
+		linear_term[i] = -0.5 * Q.get_QD()[i];
+	}
+
+	if (C >(double)1 / l)
+	{
+		double sum_alpha = 1;
+		for (i = 0; i<l; i++)
+		{
+			alpha[i] = min(C, sum_alpha);
+			sum_alpha -= alpha[i];
+
+			ones[i] = 1;
+		}
+
+		Solver s;
+		s.Solve(l, Q, linear_term, ones, alpha, C, C,
+			param->eps, si, param->shrinking);
+
+		// \bar{R} = 2(obj-rho) + sum K_{ii}*alpha_i
+		// because rho = (a^Ta - \bar{R})/2
+		r_square = 2 * (si->obj - si->rho);
+		for (i = 0; i<l; i++)
+			r_square += alpha[i] * QD[i];
+	}
+	else
+	{
+		r_square = 0.0;
+		double rho = 0;
+		double obj = 0;
+
+		// rho = aTa/2 = sum sum Q_ij /l/l/2
+		// obj = 0.5*(-sum Q_ii + sum sum Q_ij /l)*C
+		// 0.5 for consistency with C > 1/l, where dual is divided by 2
+		for (i = 0; i<l; i++)
+		{
+			alpha[i] = 1.0 / l;
+			obj -= QD[i] / 2;
+			rho += QD[i] / 2;
+			for (j = i + 1; j<l; j++)
+				rho += Kernel::k_function(prob->x[i], prob->x[j], *param);
+		}
+		si->obj = (obj + rho / l)*C;
+		si->rho = rho / (l*l);
+	}
+
+	info("R^2 = %f\n", r_square);
+	if (C > 1 && param->svm_type == SVDD)
+		info("Warning: Note that after C > 1, all models are the same.\n");
+	if (C <= 1.0 / l)
+		info("Warning: R^* = 0 for C <= 1/#instances.\n");
+
+	delete[] linear_term;
+	delete[] QD;
+	delete[] ones;
+}
+/*******************end ******************************************/
 
 static void solve_r2(
 		const svm_problem *prob, const svm_parameter *param,
@@ -2703,6 +2780,19 @@ double svm_predict_values(const svm_model *model, const svm_node *x, double* dec
 		*dec_values = tmp_value + 2*model->rho[0];
 		return (*dec_values<=0?1:-1);
 	}
+	
+	/****************************************************************
+	* 作    者：ake
+	* 描述说明：yuce
+	*****************************************************************/
+	else if (model->param.svm_type == STDD)
+	{
+
+	}
+	/****************************************************************
+	* end
+	*****************************************************************/
+	
 	else
 	{
 		int nr_class = model->nr_class;
@@ -3371,3 +3461,327 @@ void svm_set_print_string_function(void (*print_func)(const char *))
 	else
 		svm_print_string = print_func;
 }
+
+
+/*** 作    者：ake****************************************************
+***描述说明：
+*****************************************************************/
+void MyTensor::GetData(struct svm_problem *prob, struct svm_parameter *param)
+{
+	int i, j, k;
+	double element;
+	double lable;
+	//fstream infile(filename.c_str());
+
+
+	double** A = new double*[Dimension1];
+	for (i = 0; i < Dimension1; i++)
+	{
+		A[i] = new double[Dimension2];
+	}
+	param->Train_u_All = new double**[DataNumTrainTotal];
+	param->Train_v_All = new double**[DataNumTrainTotal];
+	for (i = 0; i<DataNumTrainTotal; i++)
+	{
+		param->Train_u_All[i] = new double*[RankF];
+		param->Train_v_All[i] = new double*[RankF];
+	}
+
+	for (i = 0; i<DataNumTrainTotal; i++)
+	{
+		for (j = 0; j<RankF; j++)
+		{
+			param->Train_u_All[i][j] = new double[Dimension1];
+			param->Train_v_All[i][j] = new double[Dimension2];
+		}
+	}
+	param->Train_Y_All = new double[DataNumTrainTotal];
+	svm_node *tem = NULL;
+	for (i = 0; i<DataNumTrainTotal; i++)
+	{
+		tem = (prob->x)[i];
+		(param->Train_Y_All)[i] = (prob->y)[i];
+		for (j = 0; j<Dimension1; j++)
+		{
+			for (k = 0; k<Dimension2; k++)
+			{
+				//infile >> element;
+				//A[j][k] = element;
+				
+				A[j][k] = tem[j * Dimension2 + k].value;
+			}
+		}
+
+		ALS_TRF(A, param->Train_u_All[i], param->Train_v_All[i], Dimension1, Dimension2, prob, param);
+
+		for (i = 0; i < prob->l; i++)
+		{
+			for (j = 0; j <= i; j++)
+			{
+				cache[i][j] = kernel(param->Train_u_All[i], param->Train_u_All[j], param->Train_v_All[i], param->Train_v_All[j]);
+				cache[j][i] = cache[i][j];
+			}
+		}
+		//infile >> lable;
+		//Train_Y_All[i] = lable;
+
+	}
+	//infile.close();
+	for (i = 0; i < Dimension1; i++)
+	{
+		delete A[i];
+	}
+	delete[]A;
+}
+
+void MyTensor::RelSpace(struct svm_problem *prob, struct svm_parameter *param)
+{
+	int DataNumTrainTotal = prob->l;
+	int RankF = param->RankF;
+
+	for (int i = 0; i<DataNumTrainTotal; i++)
+	{
+		for (int j = 0; j<RankF; j++)
+		{
+			delete param->Train_u_All[i][j];
+			delete param->Train_v_All[i][j];
+		}
+	}
+	for (int i = 0; i<DataNumTrainTotal; i++)
+	{
+		delete param->Train_u_All[i];
+		delete param->Train_v_All[i];
+	}
+	delete[]param->Train_u_All;
+	delete[]param->Train_v_All;
+	delete[]param->Train_Y_All;
+
+}
+
+
+/*张量Rank-R分解：ALS算法*/
+bool ALS_TRF(double **A, double **u, double **v, int n, int m, struct svm_problem *prob, struct svm_parameter *param)
+{
+	double len_u, len_v, e;
+	double **u_old, **v_old, **u_new, **v_new;
+	int RankF = param->RankF;
+	u_old = new double*[RankF];
+	v_old = new double*[RankF];
+	u_new = new double*[RankF];
+	v_new = new double*[RankF];
+	for (int i = 0; i<RankF; i++)
+	{
+		u_old[i] = new double[n];
+		v_old[i] = new double[m];
+		u_new[i] = new double[n];
+		v_new[i] = new double[m];
+	}
+	for (int i = 0; i<RankF; i++)
+	{
+		for (int j = 0; j<n; j++)
+		{
+			u_old[i][j] = 0.0;
+			u_new[i][j] = 0.0;
+		}
+		u_new[i][0] = 1.0;
+		for (int j = 0; j<m; j++)
+		{
+			v_old[i][j] = 0.0;
+			v_new[i][j] = 0.0;
+		}
+		v_new[i][0] = 1.0;
+	}
+
+
+	for (int i = 0; i<RankF; i++)
+	{
+		while (1)
+		{
+			for (int j = 0; j<n; j++)
+			{
+				u_old[i][j] = u_new[i][j];
+			}
+			for (int j = 0; j<m; j++)
+			{
+				v_old[i][j] = v_new[i][j];
+			}
+
+			for (int k = 0; k < n; k++)
+			{
+				u_new[i][k] = 0.0;
+				for (int j = 0; j < m; j++)
+				{
+					u_new[i][k] += A[k][j] * v_old[i][j];
+				}
+				u[i][k] = u_new[i][k];
+			}
+
+			len_u = 0;
+			for (int k = 0; k < n; k++)
+			{
+				len_u += u[i][k] * u[i][k];
+			}
+			len_u = sqrt(len_u);
+
+			if (len_u != 0)
+			{
+				for (int k = 0; k < n; k++)
+				{
+					u_new[i][k] /= len_u;
+				}
+			}
+
+			for (int j = 0; j < m; j++)
+			{
+				v_new[i][j] = 0.0;
+				for (int k = 0; k < n; k++)
+				{
+					v_new[i][j] += A[k][j] * u_new[i][k];
+				}
+				v[i][j] = v_new[i][j];
+			}
+
+			len_v = 0;
+			for (int k = 0; k < m; k++)
+			{
+				len_v += v[i][k] * v[i][k];
+			}
+			len_v = sqrt(len_v);
+
+			if (len_v != 0)
+			{
+				for (int k = 0; k < m; k++)
+				{
+					v_new[i][k] /= len_v;
+				}
+			}
+
+			e = 0;
+
+			for (int k = 0; k < n; k++)
+			{
+				e += pow(u_new[i][k] - u_old[i][k], 2);
+			}
+			for (int k = 0; k < m; k++)
+			{
+				e += pow(v_new[i][k] - v_old[i][k], 2);
+			}
+
+			if (e < param->eps)
+				break;
+		}
+
+		for (int k = 0; k < n; k++)
+		{
+			u[i][k] = u_new[i][k];
+		}
+		for (int j = 0; j < m; j++)
+		{
+			v[i][j] = v_new[i][j] * len_v;
+		}
+		for (int k = 0; k < n; k++)
+		{
+
+			for (int j = 0; j < m; j++)
+			{
+				A[k][j] = A[k][j] - u[i][k] * v[i][j];
+			}
+
+		}
+	}
+	for (int j = 0; j<RankF; j++)
+	{
+		delete u_old[j];
+		delete u_new[j];
+		delete v_old[j];
+		delete v_new[j];
+	}
+	delete[] u_old;
+	delete[] v_old;
+	delete[] u_new;
+	delete[] v_new;
+
+	return true;
+}
+
+MyTensor::MyTensor(struct svm_problem *prob, struct svm_parameter *param)
+{
+	Dimension1 = param->Dimension1;
+	Dimension2 = param->Dimension2;
+	RankF = param->RankF;
+	DataNumTrainTotal = prob->l;
+
+	int L = DataNumTrainTotal;
+
+	cache = new double*[L];
+	for (int i = 0; i<L; i++)
+	{
+		cache[i] = new double[L];
+	}
+}
+
+double MyTensor::kernel(int i, int j)
+{
+	int i1 = i > j ? i : j;
+	int j1 = i > j ? j : i;
+	return cache[i1][j1];
+}
+
+double MyTensor::kernel(double** u1, double** u2, double** v1, double** v2)
+{
+	int KernelId = 0;
+
+	double k[4], kk[4];
+	double ValueOfKernel[4];
+	for (int i = 0; i < 4; i++)
+		ValueOfKernel[i] = 0.0;
+	if (KernelId == 0)
+	{//线性核函数
+		for (int i = 0; i < RankF; i++)
+		{
+			for (int m = 0; m < RankF; m++)
+			{
+				k[3] = 1;
+				kk[3] = 0.0;
+				for (int j = 0; j < Dimension1; j++)
+				{
+					kk[3] += u1[i][j] * u2[m][j];
+				}
+				k[3] *= kk[3];
+				kk[3] = 0.0;
+				for (int j = 0; j < Dimension2; j++)
+				{
+					kk[3] += v1[i][j] * v2[m][j];
+				}
+				k[3] *= kk[3];
+				ValueOfKernel[3] += k[3];
+			}
+		}
+	}
+	//else
+	//{
+	//	//RBF核函数
+	//	for (int i = 0; i < RankF; i++)
+	//	{
+	//		for (int m = 0; m < RankF; m++)
+	//		{
+	//			k[0] = 1;
+	//			kk[0] = 0.0;
+	//			for (int j = 0; j < Dimension1; j++)
+	//			{
+	//				kk[0] += pow(u1[i][j] - u2[m][j], 2.0);
+	//			}
+	//			k[0] *= exp(-kk[0] / (2.0*pow(sigma1, 2)));
+	//			kk[0] = 0;
+	//			for (int j = 0; j < Dimension2; j++)
+	//			{
+	//				kk[0] += pow(v1[i][j] - v2[m][j], 2.0);
+	//			}
+	//			k[0] *= exp(-kk[0] / (2.0*pow(sigma2, 2)));
+	//			ValueOfKernel[3] += k[0];
+	//		}
+	//	}
+	//}
+	return ValueOfKernel[3];
+}
+/*******************end ******************************************/

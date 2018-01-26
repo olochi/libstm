@@ -210,3 +210,10 @@ FakesAssemblies/
 GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
+/svm-train/svm-train.vcxproj
+/svm-train/svm-train.vcxproj.filters
+/libstm.sln
+/svm-predict/svm-predict.vcxproj.filters
+/svm-predict/svm-predict.vcxproj
+/libstm/libstm.vcxproj
+/libstm/libstm.vcxproj.filters

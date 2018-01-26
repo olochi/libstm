@@ -22,7 +22,7 @@ struct svm_problem
 	struct svm_node **x;
 };
 
-enum { C_SVC, NU_SVC, ONE_CLASS, EPSILON_SVR, NU_SVR, SVDD, R2, R2q };	/* svm_type */
+enum { C_SVC, NU_SVC, ONE_CLASS, EPSILON_SVR, NU_SVR, SVDD, R2, R2q, STDD };	/* svm_type */
 enum { LINEAR, POLY, RBF, SIGMOID, PRECOMPUTED }; /* kernel_type */
 
 struct svm_parameter
@@ -44,8 +44,50 @@ struct svm_parameter
 	double p;	/* for EPSILON_SVR */
 	int shrinking;	/* use the shrinking heuristics */
 	int probability; /* do probability estimates */
+
+	/****************************************************************
+	* 作    者：ake
+	* 描述说明：
+	*****************************************************************/
+	int Dimension1 = 32;
+	int Dimension2 = 32;
+	int Dimension;
+	//Dimension = Dimension1 * Dimension2; //数据维数(不包括y)
+	int RankF;
+
+	double ***Train_u;
+	double ***Train_v;
+	double *Train_Y;   //训练点对应标号{+1,-1}
+	double ***Train_u_All;  //训练样本点
+	double ***Train_v_All;
+	double *Train_Y_All;   //训练点对应标号{+1,-1}
+	/**************************end***********************************/
 };
 
+/*** 作    者：ake****************************************************
+***描述说明：
+*****************************************************************/
+class MyTensor
+{
+public:
+	int Dimension1;
+	int Dimension2;
+	int RankF;
+	int DataNumTrainTotal;
+
+	MyTensor(struct svm_problem *prob, struct svm_parameter *param);
+	void GetData(struct svm_problem *prob, struct svm_parameter *param);
+	void RelSpace(struct svm_problem *prob, struct svm_parameter *param);
+
+	double **cache;//对核函数进行缓存
+	double kernel(int i, int j);
+	double kernel(double** u1, double** u2, double** v1, double** v2);
+};
+
+
+/*张量Rank-R分解：ALS算法*/
+bool ALS_TRF(double **A, double **u, double **v, int n, int m, struct svm_problem *prob, struct svm_parameter *param);
+/*******************end ******************************************/
 //
 // svm_model
 // 
